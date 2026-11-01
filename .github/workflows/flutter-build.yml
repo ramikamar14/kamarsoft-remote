@@ -95,6 +95,7 @@ jobs:
         run: python res/update/generate_update_metadata.py check-key
 
   generate-sbom:
+    if: false  # Kamar Soft: Windows + Android only
     needs: [validate-update-metadata-keys]
     runs-on: ubuntu-latest
 
@@ -575,6 +576,7 @@ jobs:
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
+    if: false  # Kamar Soft: Windows + Android only
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     needs: [validate-update-metadata-keys]
     runs-on: ${{ matrix.job.os }}
@@ -787,7 +789,7 @@ jobs:
             ./SignOutput/rustdesk-*.exe
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact }}
+    if: false  # Kamar Soft: Windows + Android only
     name: build rustdesk ios ipa
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -909,6 +911,7 @@ jobs:
 
 
   build-for-macOS:
+    if: false  # Kamar Soft: Windows + Android only
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -1878,6 +1881,7 @@ jobs:
             signed-apk/rustdesk-${{ env.VERSION }}-universal${{ env.suffix }}.apk
 
   build-rustdesk-linux:
+    if: false  # Kamar Soft: Windows + Android only
     needs: [generate-bridge]
     name: build rustdesk linux ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.on }}
@@ -2227,6 +2231,7 @@ jobs:
   # old for it. A separate job rather than a matrix entry of build-rustdesk-linux: appimage and
   # flatpak need that job, and a failure here must not skip them.
   build-rustdesk-linux-drm:
+    if: false  # Kamar Soft: Windows + Android only
     needs: [generate-bridge]
     name: build rustdesk linux drm x86_64
     runs-on: ubuntu-22.04
@@ -2546,7 +2551,7 @@ jobs:
           path: ${{ env.DRM_DEB }}
 
   build-rustdesk-linux-sciter:
-    if: ${{ inputs.upload-artifact }}
+    if: false  # Kamar Soft: Windows + Android only
     needs: [validate-update-metadata-keys]
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
@@ -2789,10 +2794,10 @@ jobs:
           path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}-sciter.deb
 
   build-appimage:
+    if: false  # Kamar Soft: Windows + Android only
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
-    if: ${{ inputs.upload-artifact }}
     strategy:
       fail-fast: false
       matrix:
@@ -2842,12 +2847,12 @@ jobs:
             ./appimage/rustdesk-${{ env.VERSION }}-*.AppImage
 
   build-flatpak:
+    if: false  # Kamar Soft: Windows + Android only
     name: Build flatpak ${{ matrix.job.target }}${{ matrix.job.suffix }}
     needs:
       - build-rustdesk-linux
       - build-rustdesk-linux-sciter
     runs-on: ${{ matrix.job.on }}
-    if: ${{ inputs.upload-artifact }}
     strategy:
       fail-fast: false
       matrix:

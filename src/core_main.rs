@@ -48,6 +48,8 @@ pub fn core_main() -> Option<CoreMainAction> {
     }
     crate::load_custom_client();
     #[cfg(windows)]
+    kamarsoft_support_checkin();
+    #[cfg(windows)]
     if !crate::platform::windows::bootstrap() {
         // return None to terminate the process
         return None;
@@ -907,4 +909,46 @@ fn parse_silent_install_args(args: &[String]) -> (Option<bool>, bool) {
 fn is_quick_support_exe(exe: &str) -> bool {
     let exe = exe.to_lowercase();
     exe.contains("-qs-") || exe.contains("-qs.exe") || exe.contains("_qs.exe")
+}
+
+/// Kamar Soft: when started from a support link download (file name like
+/// "KamarSoftSupport-123456.exe"), report this device ID to the portal so the
+/// technician sees it without the customer typing anything.
+#[cfg(windows)]
+fn kamarsoft_support_checkin() {
+    let exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
+        .unwrap_or_default();
+    let code: String = match exe.find("Support-") {
+        Some(i) => exe[i + 8..].chars().take_while(|c| c.is_ascii_digit()).collect(),
+        None => return,
+    };
+    if code.len() != 6 {
+        return;
+    }
+    std::thread::spawn(move || {
+        let id = config::Config::get_id();
+        if id.is_empty() {
+            return;
+        }
+        let body = format!("{{\"code\":\"{}\",\"id\":\"{}\"}}", code, id);
+        if let Ok(rt) = hbb_common::tokio::runtime::Runtime::new() {
+            for _ in 0..5 {
+                let r = rt.block_on(crate::common::post_request(
+                    "https://remote.ktstask.top/api/checkin".to_owned(),
+                    body.clone(),
+                    "",
+                ));
+                match r {
+                    Ok(_) => {
+                        log::info!("Kamar Soft check-in sent for code {}", code);
+                        break;
+                    }
+                    Err(e) => log::warn!("Kamar Soft check-in failed: {}", e),
+                }
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
+        }
+    });
 }

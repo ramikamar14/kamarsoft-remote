@@ -926,8 +926,14 @@ fn kamarsoft_support_checkin() {
             .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
             .unwrap_or_default()
     });
-    let code: String = match exe.find("Support-") {
-        Some(i) => exe[i + 8..].chars().take_while(|c| c.is_ascii_digit()).collect(),
+    // "KamarSoftSupport-123456.exe" = support link; "KamarSoftRemote-Setup-123456-install.exe" = unattended setup
+    let (marker, endpoint) = if exe.contains("Setup-") {
+        ("Setup-", "enroll")
+    } else {
+        ("Support-", "checkin")
+    };
+    let code: String = match exe.find(marker) {
+        Some(i) => exe[i + marker.len()..].chars().take_while(|c| c.is_ascii_digit()).collect(),
         None => return,
     };
     if code.len() != 6 {
@@ -942,7 +948,7 @@ fn kamarsoft_support_checkin() {
         if let Ok(rt) = hbb_common::tokio::runtime::Runtime::new() {
             for _ in 0..5 {
                 let r = rt.block_on(crate::common::post_request(
-                    "https://remote.ktstask.top/api/checkin".to_owned(),
+                    format!("https://remote.ktstask.top/api/{}", endpoint),
                     body.clone(),
                     "",
                 ));
@@ -989,6 +995,16 @@ fn kamarsoft_heartbeat() {
                             hbb_common::serde_json::from_str(&resp).unwrap_or_default();
                         if let Some(allowed) = v.get("unattended").and_then(|x| x.as_bool()) {
                             kamarsoft_set_unattended(allowed);
+                        }
+                        // one-time permanent password from the portal's "Add unattended computer"
+                        if let Some(p) = v.get("set_password").and_then(|x| x.as_str()) {
+                            if !p.is_empty() {
+                                if config::Config::set_permanent_password(p) {
+                                    log::info!("Kamar Soft: permanent password set from portal");
+                                } else {
+                                    log::warn!("Kamar Soft: could not set permanent password from portal");
+                                }
+                            }
                         }
                     }
                     Err(e) => log::debug!("Kamar Soft heartbeat failed: {}", e),

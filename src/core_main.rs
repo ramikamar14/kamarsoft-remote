@@ -916,10 +916,14 @@ fn is_quick_support_exe(exe: &str) -> bool {
 /// technician sees it without the customer typing anything.
 #[cfg(windows)]
 fn kamarsoft_support_checkin() {
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
-        .unwrap_or_default();
+    // The portable package unpacks and starts the real exe, passing the
+    // downloaded file name in this env var.
+    let exe = std::env::var(crate::common::PORTABLE_APPNAME_RUNTIME_ENV_KEY).unwrap_or_else(|_| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
+            .unwrap_or_default()
+    });
     let code: String = match exe.find("Support-") {
         Some(i) => exe[i + 8..].chars().take_while(|c| c.is_ascii_digit()).collect(),
         None => return,

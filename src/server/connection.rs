@@ -2636,6 +2636,12 @@ impl Connection {
                 return true;
             }
         }
+        // Kamar Soft: unlicensed devices only accept attended sessions.
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if !crate::core_main::kamarsoft_unattended_allowed() {
+            log::info!("Kamar Soft: permanent password refused, device not licensed");
+            return false;
+        }
         if password::permanent_enabled() || allow_permanent_password {
             let print_fallback = || {
                 if allow_permanent_password && !password::permanent_enabled() {

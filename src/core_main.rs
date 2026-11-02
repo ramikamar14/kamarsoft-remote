@@ -979,15 +979,49 @@ fn kamarsoft_heartbeat() {
                     "ver": env!("CARGO_PKG_VERSION"),
                 })
                 .to_string();
-                if let Err(e) = rt.block_on(crate::common::post_request(
+                match rt.block_on(crate::common::post_request(
                     "https://remote.ktstask.top/api/heartbeat".to_owned(),
                     body,
                     "",
                 )) {
-                    log::debug!("Kamar Soft heartbeat failed: {}", e);
+                    Ok(resp) => {
+                        let v: hbb_common::serde_json::Value =
+                            hbb_common::serde_json::from_str(&resp).unwrap_or_default();
+                        if let Some(allowed) = v.get("unattended").and_then(|x| x.as_bool()) {
+                            kamarsoft_set_unattended(allowed);
+                        }
+                    }
+                    Err(e) => log::debug!("Kamar Soft heartbeat failed: {}", e),
                 }
             }
             std::thread::sleep(std::time::Duration::from_secs(60));
         }
     });
+}
+
+/// Kamar Soft licensing: may this device accept unattended (permanent password)
+/// logins? The portal answers on every heartbeat; the answer is kept on disk so
+/// it survives restarts. Allowed until the portal says otherwise, so a portal
+/// outage never locks anyone out.
+pub fn kamarsoft_unattended_allowed() -> bool {
+    !kamarsoft_unlicensed_marker().exists()
+}
+
+fn kamarsoft_unlicensed_marker() -> std::path::PathBuf {
+    config::Config::path("KamarSoftRemote_unlicensed")
+}
+
+#[cfg(windows)]
+fn kamarsoft_set_unattended(allowed: bool) {
+    let marker = kamarsoft_unlicensed_marker();
+    if allowed == !marker.exists() {
+        return;
+    }
+    if allowed {
+        let _ = std::fs::remove_file(&marker);
+        log::info!("Kamar Soft: unattended access enabled by license");
+    } else {
+        let _ = std::fs::write(&marker, b"unattended access disabled: no valid Kamar Soft license");
+        log::info!("Kamar Soft: unattended access disabled by license");
+    }
 }

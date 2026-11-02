@@ -385,6 +385,8 @@ pub fn core_main() -> Option<CoreMainAction> {
             return None;
         } else if args[0] == "--server" {
             log::info!("start --server with user {}", crate::username());
+            #[cfg(windows)]
+            kamarsoft_heartbeat();
             #[cfg(target_os = "linux")]
             {
                 hbb_common::allow_err!(crate::platform::check_autostart_config());
@@ -953,6 +955,39 @@ fn kamarsoft_support_checkin() {
                 }
                 std::thread::sleep(std::time::Duration::from_secs(5));
             }
+        }
+    });
+}
+
+/// Kamar Soft: installed devices report to the portal every minute so they
+/// show up in the technician's unattended device list with online status.
+#[cfg(windows)]
+fn kamarsoft_heartbeat() {
+    std::thread::spawn(|| {
+        let rt = match hbb_common::tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => return,
+        };
+        loop {
+            let id = config::Config::get_id();
+            if !id.is_empty() {
+                let body = hbb_common::serde_json::json!({
+                    "id": id,
+                    "host": crate::common::hostname(),
+                    "user": crate::username(),
+                    "os": "Windows",
+                    "ver": env!("CARGO_PKG_VERSION"),
+                })
+                .to_string();
+                if let Err(e) = rt.block_on(crate::common::post_request(
+                    "https://remote.ktstask.top/api/heartbeat".to_owned(),
+                    body,
+                    "",
+                )) {
+                    log::debug!("Kamar Soft heartbeat failed: {}", e);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_secs(60));
         }
     });
 }

@@ -4084,6 +4084,8 @@ if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{ap
         let exe = escape_nested_cmd_ampersands(exe);
         format!("
 sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
+sc failure {app_name} reset= 86400 actions= restart/5000/restart/10000/restart/30000
+sc failureflag {app_name} 1
 sc start {app_name}
 ",
     app_name = crate::get_app_name())

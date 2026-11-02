@@ -48,6 +48,8 @@ pub fn core_main() -> Option<CoreMainAction> {
     }
     crate::load_custom_client();
     #[cfg(windows)]
+    kamarsoft_client_mode_init();
+    #[cfg(windows)]
     kamarsoft_support_checkin();
     #[cfg(windows)]
     if !crate::platform::windows::bootstrap() {
@@ -954,6 +956,9 @@ fn kamarsoft_support_checkin() {
                 ));
                 match r {
                     Ok(_) => {
+                        if endpoint == "enroll" {
+                            kamarsoft_set_client_mode();
+                        }
                         log::info!("Kamar Soft check-in sent for code {}", code);
                         break;
                     }
@@ -1039,5 +1044,36 @@ fn kamarsoft_set_unattended(allowed: bool) {
     } else {
         let _ = std::fs::write(&marker, b"unattended access disabled: no valid Kamar Soft license");
         log::info!("Kamar Soft: unattended access disabled by license");
+    }
+}
+
+/// Kamar Soft client mode: PCs installed from a portal setup link only receive
+/// support (host only, no outgoing connections). The marker lives in ProgramData
+/// so both the user's app and the SYSTEM service see it.
+#[cfg(windows)]
+fn kamarsoft_client_marker() -> Option<std::path::PathBuf> {
+    std::env::var("ProgramData")
+        .ok()
+        .map(|p| std::path::PathBuf::from(p).join("KamarSoftRemote").join("client-mode"))
+}
+
+#[cfg(windows)]
+fn kamarsoft_set_client_mode() {
+    if let Some(m) = kamarsoft_client_marker() {
+        if let Some(dir) = m.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&m, b"Kamar Soft client PC: host only");
+        kamarsoft_client_mode_init();
+    }
+}
+
+#[cfg(windows)]
+fn kamarsoft_client_mode_init() {
+    if kamarsoft_client_marker().map_or(false, |m| m.exists()) {
+        config::HARD_SETTINGS
+            .write()
+            .unwrap()
+            .insert("conn-type".to_owned(), "incoming".to_owned());
     }
 }

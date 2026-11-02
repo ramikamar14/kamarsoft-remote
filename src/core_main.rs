@@ -988,6 +988,7 @@ fn kamarsoft_heartbeat() {
                     "user": crate::username(),
                     "os": "Windows",
                     "ver": env!("CARGO_PKG_VERSION"),
+                    "build": kamarsoft_build(),
                 })
                 .to_string();
                 match rt.block_on(crate::common::post_request(
@@ -1000,6 +1001,9 @@ fn kamarsoft_heartbeat() {
                             hbb_common::serde_json::from_str(&resp).unwrap_or_default();
                         if let Some(allowed) = v.get("unattended").and_then(|x| x.as_bool()) {
                             kamarsoft_set_unattended(allowed);
+                        }
+                        if let Some(u) = v.get("update") {
+                            kamarsoft_apply_update(u);
                         }
                         // one-time permanent password from the portal's "Add unattended computer"
                         if let Some(p) = v.get("set_password").and_then(|x| x.as_str()) {
@@ -1075,5 +1079,62 @@ fn kamarsoft_client_mode_init() {
             .write()
             .unwrap()
             .insert("conn-type".to_owned(), "incoming".to_owned());
+    }
+}
+
+/// Kamar Soft build number (the GitHub Actions run number), used for auto-update.
+pub fn kamarsoft_build() -> u64 {
+    option_env!("KS_BUILD").and_then(|x| x.parse().ok()).unwrap_or(0)
+}
+
+/// Kamar Soft auto-update: the portal offers {build, url, sha256} when an admin
+/// published a newer build. The installed service downloads it, checks the
+/// SHA-256 fingerprint, and reinstalls silently. Each build is tried at most
+/// every 6 hours so a bad download never loops.
+#[cfg(windows)]
+fn kamarsoft_apply_update(u: &hbb_common::serde_json::Value) {
+    use sha2::{Digest, Sha256};
+    lazy_static::lazy_static! {
+        static ref LAST_TRY: std::sync::Mutex<(u64, Option<std::time::Instant>)> = std::sync::Mutex::new((0, None));
+    }
+    let build = u.get("build").and_then(|x| x.as_u64()).unwrap_or(0);
+    let url = u.get("url").and_then(|x| x.as_str()).unwrap_or("").to_owned();
+    let sha = u.get("sha256").and_then(|x| x.as_str()).unwrap_or("").to_lowercase();
+    if build <= kamarsoft_build() || !url.starts_with("https://remote.ktstask.top/") || sha.len() != 64 {
+        return;
+    }
+    {
+        let mut last = LAST_TRY.lock().unwrap();
+        if last.0 == build && last.1.map_or(false, |t| t.elapsed() < std::time::Duration::from_secs(6 * 3600)) {
+            return;
+        }
+        *last = (build, Some(std::time::Instant::now()));
+    }
+    log::info!("Kamar Soft: updating to build {}", build);
+    let bytes = match crate::hbbs_http::create_http_client_with_url(&url)
+        .get(&url)
+        .send()
+        .and_then(|r| r.error_for_status())
+        .and_then(|r| r.bytes())
+    {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("Kamar Soft update download failed: {}", e);
+            return;
+        }
+    };
+    let got = hex::encode(Sha256::digest(&bytes));
+    if got != sha {
+        log::warn!("Kamar Soft update rejected: fingerprint mismatch");
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("KamarSoftRemote-update-{}.exe", build));
+    if let Err(e) = std::fs::write(&path, &bytes) {
+        log::warn!("Kamar Soft update could not be saved: {}", e);
+        return;
+    }
+    match std::process::Command::new(&path).arg("--silent-install").spawn() {
+        Ok(_) => log::info!("Kamar Soft: update {} started", build),
+        Err(e) => log::warn!("Kamar Soft update could not start: {}", e),
     }
 }
